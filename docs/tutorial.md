@@ -571,3 +571,24 @@ Point 1 is a live example in
 [`farcasterxyz/hub-monorepo`](https://github.com/farcasterxyz/hub-monorepo). If
 you are reading this and it still applies, a pull request is welcome — that
 repository is the canonical place for it.
+
+---
+
+## References
+
+The four sources the bounty cites, plus the two pages that superseded parts of
+them. Read these when this tutorial and reality disagree.
+
+1. [Farcaster architecture overview](https://docs.farcaster.xyz/learn/architecture/overview)
+   — the two systems: onchain registries on Optimism, messages on Snapchain.
+2. [Hello world](https://docs.farcaster.xyz/developers/guides/basics/hello-world)
+   — the canonical first client. It still registers its signer onchain; see
+   *Where the official docs drift*.
+3. [Running a Snapchain node](https://snapchain.farcaster.xyz/guides/running-a-node)
+   — hardware, ports and the official install script that `readnode up` wraps.
+4. [Snapchain HTTP API](https://docs.neynar.com/snapchain/httpapi/httpapi.md)
+   — every `/v1/` endpoint the client calls.
+5. [Node types](https://snapchain.farcaster.xyz/node-types) — read nodes vs
+   validators, and why a read node relays writes.
+6. [Writing messages](https://snapchain.farcaster.xyz/guides/writing-messages)
+   — the gasless `KEY_ADD` flow used in Part 3.

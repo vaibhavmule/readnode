@@ -402,3 +402,16 @@ Farcaster 助记词就是账号的 `rm -rf /`。它推导出托管地址，而�
 2. `GetOnChainSignersByFid` 只返回链上密钥。请用 `GetSignersByFid` / `GET /v1/signersByFid`，它一次返回两类密钥，并附带 `currentUserNonce` 和每个 FID 的免 gas 密钥上限。
 
 第 1 点对应 [`farcasterxyz/hub-monorepo`](https://github.com/farcasterxyz/hub-monorepo) 里一个仍在使用的示例。如果你读到这里时它还没改，欢迎提 pull request——那才是这个问题的正典归宿。
+
+---
+
+## 参考资料
+
+悬赏帖引用的四个来源，加上取代了其中部分内容的两个页面。当本教程与实际情况不符时，以这些为准。
+
+1. [Farcaster 架构概览](https://docs.farcaster.xyz/learn/architecture/overview)——两套系统：Optimism 上的链上注册表，Snapchain 上的消息。
+2. [Hello world](https://docs.farcaster.xyz/developers/guides/basics/hello-world)——官方的第一个客户端示例。它仍然在链上注册签名密钥；见「官方文档哪里滞后了」。
+3. [运行 Snapchain 节点](https://snapchain.farcaster.xyz/guides/running-a-node)——硬件、端口，以及 `readnode up` 所封装的官方安装脚本。
+4. [Snapchain HTTP API](https://docs.neynar.com/snapchain/httpapi/httpapi.md)——客户端调用的每一个 `/v1/` 端点。
+5. [节点类型](https://snapchain.farcaster.xyz/node-types)——读取节点 vs 验证者，以及读取节点为何会转发写入。
+6. [写入消息](https://snapchain.farcaster.xyz/guides/writing-messages)——第三部分使用的免 gas `KEY_ADD` 流程。
