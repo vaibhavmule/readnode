@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>readnode client</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot" id="node-dot"></span>
+        <strong>readnode</strong>
+      </div>
+      <div class="node-meta" id="node-meta">connecting…</div>
+    </header>
+
+    <main>
+      <section id="onboarding" class="panel">
+        <h1>Point this client at your own node</h1>
+        <p class="lede">
+          This client reads Farcaster from the <b>Snapchain read node you run</b>, not
+          from a hosted API. Writes are signed by an app key you delegate below.
+        </p>
+
+        <ol class="steps">
+          <li>
+            <h2>1 · Import your seed phrase</h2>
+            <p class="hint">
+              Used once, on this machine, to prove you control the account. It is
+              never written to disk. Use a test account.
+            </p>
+            <textarea
+              id="mnemonic"
+              rows="3"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="twelve or twenty-four words separated by spaces"
+            ></textarea>
+            <button id="import" class="primary">Load account</button>
+            <dl class="facts" id="account-facts"></dl>
+          </li>
+
+          <li>
+            <h2>2 · Issue an app key</h2>
+            <p class="hint">
+              A gasless, scoped key registered straight to your node. No Optimism
+              transaction, no gas.
+            </p>
+            <button id="issue" class="primary" disabled>Issue app key</button>
+            <dl class="facts" id="signer-facts"></dl>
+          </li>
+        </ol>
+
+        <details class="warn">
+          <summary>Handling seed phrases safely</summary>
+          <p>
+            A seed phrase is the root of the account, like <code>rm -rf</code> is the
+            root of a filesystem. Anyone holding it can move the account's custody
+            address and revoke every key.
+          </p>
+          <ul>
+            <li>Test with a throwaway account, never your main one.</li>
+            <li>Only paste it into software you can read the source of — this one.</li>
+            <li>Prefer delegated signers: the key below can be revoked and expires.</li>
+          </ul>
+        </details>
+      </section>
+
+      <section id="app" hidden>
+        <div class="compose panel">
+          <textarea id="compose-text" rows="3" placeholder="Write a cast…"></textarea>
+          <div class="row">
+            <span class="hint" id="compose-hint"></span>
+            <button id="publish" class="primary">Cast</button>
+          </div>
+        </div>
+
+        <div class="panel controls">
+          <h2>Client filter</h2>
+          <p class="hint">
+            Every cast is signed by the app key that posted it. Those keys carry a
+            verified <code>requestFid</code> — the app that asked for them — so you
+            can pick which clients appear in your feed.
+          </p>
+          <div id="client-list" class="client-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="row">
+            <h2>Feed</h2>
+            <button id="refresh" class="ghost">Refresh</button>
+          </div>
+          <div id="feed" class="feed"></div>
+        </div>
+
+        <div class="panel" id="profile-panel" hidden>
+          <div class="row">
+            <h2 id="profile-title">Profile</h2>
+            <button id="profile-close" class="ghost">Close</button>
+          </div>
+          <div id="profile-body"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

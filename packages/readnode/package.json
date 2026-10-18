@@ -1,0 +1,29 @@
+{
+  "name": "readnode",
+  "version": "0.1.0",
+  "description": "Provision a Snapchain read node and run a Farcaster client against it.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "readnode": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "public"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@farcaster/hub-nodejs": "^0.17.0",
+    "viem": "^2.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

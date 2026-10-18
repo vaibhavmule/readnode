@@ -1,0 +1,561 @@
+# Read from your own Farcaster node
+
+A Farcaster client that owns its data. You run the node; nothing here talks to a
+hosted API.
+
+---
+
+## Quickstart
+
+Three commands. You need a Farcaster account that already has storage rented.
+
+```bash
+# 0. Provision the compute
+readnode provision --provider aws --username yourname
+
+# 1. Install the read node and wait for it to sync
+readnode up
+
+# 2. Open the client
+readnode client
+```
+
+`readnode provision` creates the machine and installs Docker. `readnode up`
+installs Snapchain, starts it, and blocks until the node catches up to the head
+of the chain. `readnode client` serves the client on
+`http://127.0.0.1:3939` — import your seed phrase there, issue an app key, and
+you can read the feed, post, follow and react.
+
+Two things to expect:
+
+- `up` will sit for **several hours** on the first run. It is downloading a
+  ~550 GB snapshot and decompressing it.
+- Nothing you do here needs an API key, an account, or a paid plan. The single
+  cost is the compute you rent in step 0.
+
+---
+
+## What you just built
+
+Two halves that talk to each other:
+
+```
+        ┌──────────────────────────────┐
+        │  your Snapchain read node    │   reads: feed, casts, reactions
+        │  :3381 HTTP   :3383 gRPC     │   writes: relayed to validators
+        └──────────────────────────────┘
+                    ▲            │
+        reads ──────┘            └────── writes
+                    │                      │
+        ┌──────────────────────────────┐   │
+        │  your client  :3939          │   │
+        │  holds a scoped app key      │───┘
+        └──────────────────────────────┘
+```
+
+The rest of this tutorial explains why it is shaped that way.
+
+---
+
+## Part 1 · Farcaster is two systems
+
+Farcaster keeps **identity onchain** and **data offchain**. Almost every
+confusing thing about the protocol comes from that split, so start here.
+
+**Onchain** — a handful of contracts on OP Mainnet (chain id 10). Three things
+happen there: creating an account, paying for storage, and authorizing keys.
+These are rare events, so they are allowed to be slow and cost gas.
+
+**Offchain** — everything else: posts, follows, reactions, profile edits. This is
+Snapchain, a peer-to-peer network of nodes. Fast, cheap, signed.
+
+The bridge between the halves is a signature. A message is only valid if it was
+signed by a key that an onchain contract says belongs to that account.
+
+### FIDs
+
+A **FID** is a Farcaster account number. It is a plain incrementing integer: `1`
+is the `@farcaster` account. FIDs are issued by the `IdRegistry` contract on
+Optimism.
+
+The protocol is full of integer FIDs, but humans want names, so there is a
+`fnames` registry that maps names to FIDs. It is offchain and public:
+
+```bash
+curl 'https://fnames.farcaster.xyz/transfers?name=farcaster'
+curl 'https://fnames.farcaster.xyz/transfers/current?fid=1'
+```
+
+The first response gives you the FID. That is exactly what
+`readnode provision --username yourname` does — no key, no account.
+
+### Custody addresses
+
+Each FID has a **custody address**: the Ethereum address that owns it. It can
+transfer the FID, change recovery, and — this is the part that matters here —
+**authorize and revoke keys**.
+
+`IdRegistry` answers both directions:
+
+```solidity
+idOf(address)   → the FID owned by this address (0 if none)
+custodyOf(fid)  → the address that owns this FID
+```
+
+Your seed phrase derives to one Ethereum address. If that address is not the
+custody address of the FID you are using, nothing else in this tutorial will
+work — you will get signature errors that look like the node is broken. The
+client checks this on import and tells you if the match fails.
+
+### App keys (signers)
+
+Here is the thing that makes Farcaster usable: **you do not sign messages with
+your custody key.** You sign them with an **app key**, a separate Ed25519
+keypair, and the custody key authorizes it once.
+
+```
+custody key (Ethereum, onchain, guarded)
+      │  authorizes, once
+      ▼
+app key (Ed25519, offchain, scoped, expiring)
+      │  signs
+      ▼
+casts, follows, reactions  →  Snapchain
+```
+
+Ed25519 rather than ECDSA is deliberate: app keys cannot be confused for
+Ethereum keys, so an app key can never be used to move funds. A compromised app
+key can post. It cannot steal the account.
+
+### Storage rent
+
+Writing to Snapchain costs storage, and storage is rented **onchain**, per FID,
+in units. Messages of different types consume different amounts — a cast and a
+reaction are not the same price, and the exact ratios come from the node itself:
+
+```bash
+curl 'http://127.0.0.1:3381/v1/storageLimitsByFid?fid=1'
+```
+
+That returns each category with a `limit` and a `used` count.
+
+Two consequences worth internalizing:
+
+1. **Storage is the app's rate limit.** It is not metered by a company; the
+   protocol enforces it. A message from an FID that has run out is rejected with
+   `bad_request.insufficient_storage`, no matter how well-signed it is.
+2. **It is why this tutorial asks for an account that already has storage.**
+   Renting storage means sending a transaction on Optimism. This tool
+   deliberately does not do that, because the goal is a node you can run without
+   touching a chain.
+
+### Snapchain messages
+
+A message is the unit of everything offchain. It has three parts:
+
+- **`data`** — the payload. Type (`CAST_ADD`, `REACTION_ADD`, `LINK_ADD`,
+  `USER_DATA_ADD`, `KEY_ADD`, …), the `fid` that authored it, a timestamp, the
+  body.
+- **`hash`** — BLAKE3 over the serialized `data`, truncated to 20 bytes.
+- **`signature` + `signer`** — an Ed25519 signature over `data`, and the public
+  key that produced it.
+
+The hash is computed **over `data` only**, not over the signature. That matters
+when you read the Rust example in the official docs and wonder why the signing
+step and the hashing step use the same byte array — they do, and the signature is
+attached afterwards.
+
+Timestamps are **seconds since the Farcaster Epoch**, 2021-01-01 00:00:00 UTC —
+not Unix time. A raw value like `48994466` is a normal recent timestamp. When
+you print one, add `1609459200` first.
+
+Over the HTTP API, hashes and public keys arrive as `0x`-prefixed hex and
+signatures as base64. Over gRPC they are raw bytes. This trips people up when
+they move a fixture from one to the other.
+
+---
+
+## Part 2 · The read node
+
+Every Snapchain node runs the same binary. One config flag decides its role:
+
+```toml
+read_node = true    # a read node
+read_node = false   # a validator
+```
+
+### Read node vs validator
+
+| | Validator | Read node |
+| --- | --- | --- |
+| Who can run one | holders of a key in the validator set | anyone |
+| Consensus | proposes and votes on blocks | never votes; syncs decided blocks from peers |
+| Gossip topics | `consensus`, `mempool`, `contact-info` | `read-node-peers`, `mempool`, `contact-info` |
+| Validator set | pulled from the onchain config registry | static, from `validators.toml` |
+| `mempoolSize` in `/v1/info` | a real per-shard count | `4294967295` — "not reported" |
+| Restarting it | removes a vote from every shard until it is back | safe whenever |
+| Typical deployment | operator-managed | `snapchain.sh` |
+
+A validator holds a key in the **validator set**, which is permissioned — on
+mainnet there are seven, and you cannot join by deciding to. A read node is the
+role anyone can run: it subscribes to decided blocks, verifies the commit
+certificate against the validator set, applies them, and serves the APIs. Same
+state, slightly behind, no vote.
+
+That is why this is the role the tutorial uses. It is also why restarting it is
+free: no consensus is disturbed.
+
+### Read nodes take writes, and have no mempool
+
+This is the subtlest part of the system, and older documentation gets it wrong in
+both directions.
+
+`submitMessage` works on **both** roles. What differs is where the message goes
+afterwards:
+
+**Submitted to a validator** — the message enters that validator's mempool for
+its shard. The validator also gossips it on the `mempool` topic, so any validator
+can include it. A message submitted directly to a validator is still proposed by
+that validator even if gossip drops it elsewhere.
+
+**Submitted to a read node** — the read node has **no mempool of its own**. It
+routes the message to a shard, validates it against that shard's state, gossips
+it on the `mempool` topic, and keeps nothing. The message reaches a block only
+when a validator picks it up from gossip. If that gossip is lost, the message is
+gone and must be resubmitted.
+
+So: a read node does accept your writes, and it does relay them. It just offers a
+weaker guarantee than submitting to a validator directly.
+
+Either way, a `200` from `submitMessage` means **the message validated and was
+accepted for relay** — not that it is in a block. To confirm inclusion, watch for
+the `MERGE_MESSAGE` event or read the message back:
+
+```bash
+curl 'http://127.0.0.1:3381/v1/castsByFid?fid=<you>&pageSize=1&reverse=true'
+```
+
+This is also why `mempoolSize: 4294967295` in `/v1/info` is normal on a read
+node. That is `u32::MAX`, meaning "not reported". It is not an overflow, and it
+is not a symptom of a broken node.
+
+### Why the hardware is what it is
+
+**16 GB RAM / 4 CPU.** The node keeps the full mainnet state in RocksDB. Sync is
+memory- and IO-bound, not CPU-bound.
+
+**2 TB of disk.** This one surprises people, because the database is much
+smaller than that:
+
+```bash
+curl -s localhost:3381/v1/info | jq '.dbStats.approxSize'
+# ~548 GB
+```
+
+Two directories live under `~/snapchain`:
+
+| Path | What it is |
+| --- | --- |
+| `.rocks/` | the database |
+| `.rocks.snapshot/` | scratch space for downloading and decompressing the snapshot |
+
+The snapshot arrives as compressed chunks that decompress in place, so peak usage
+is roughly **two** copies of the state — about 1.1 TB. A 1 TB disk fills up
+in the middle of the download and the node dies with an unhelpful error. The
+second terabyte is not headroom for growth; it is required to complete the first
+sync.
+
+**Ports.** All three must be reachable from the internet:
+
+| Port | Protocol | Use |
+| --- | --- | --- |
+| 3381 | TCP | HTTP API |
+| 3382 | UDP | gossip, libp2p over QUIC |
+| 3383 | TCP | gRPC API |
+
+`3382/UDP` is the one that matters for peering and the one that is easiest to
+forget, because it is neither TCP nor a port you will ever `curl`. A node with
+only TCP open will sync but will not peer properly. If you are behind a cloud
+firewall *and* a host firewall, open it in both.
+
+### Watching it sync
+
+```bash
+readnode status
+curl -s localhost:3381/v1/info | jq
+```
+
+`blockDelay` is how many seconds a shard's newest block is behind the wall clock.
+While the node catches up it counts down. Once every shard is in single digits,
+you are in sync. `maxHeight` differs between shards because each shard is its own
+chain — do not read a mismatch as a problem.
+
+On a read node, a successful sync shows `Processed decided block` in the logs.
+`Decided value with round` is a validator line; if you see it on a read node,
+something is misconfigured.
+
+---
+
+## Part 3 · The client
+
+### Step 1 — import the seed phrase
+
+The client takes a BIP-39 seed phrase and derives the custody address. That is
+all it needs from the seed, and it holds it in memory only — never on disk.
+
+From the custody address it resolves your FID on Optimism with a public RPC
+endpoint (no key), then confirms `custodyOf(fid)` is the same address. If it is
+not, stop: you are about to authorize a key on an account you do not control.
+
+### Step 2 — issue an app key
+
+This used to require an Optimism transaction to `KeyGateway.add()`. It does not
+anymore. Snapchain accepts **gasless signers**: you register the key by
+submitting a `KEY_ADD` message to a node. No transaction, no gas, about a second.
+
+A `KEY_ADD` is unusual because it carries **two EIP-712 signatures plus the
+message envelope's own signature**, and each does a different job:
+
+1. **`SignedKeyRequest`, from the requesting app.** Binds the app's `requestFid`
+   to the key, so an app cannot claim another app's identity. This is
+   ABI-encoded into the body's `metadata` field.
+2. **`KeyAdd`, from the custody address of the FID receiving the key.** This is
+   the actual authorization. It covers the **scopes, the TTL and the nonce**, so
+   none of them can be altered in flight.
+3. **The envelope signature**, produced by the new Ed25519 key itself — proof
+   that whoever is submitting the `KEY_ADD` actually holds the private key. This
+   is why `KEY_ADD` is exempt from the usual "the signer must already be
+   registered" check. It is the one message type that creates the thing it is
+   signed with.
+
+**The trap.** There are two functions that look interchangeable and are not:
+
+- `getSignedKeyRequestMetadata()` signs the **onchain**
+  `Farcaster SignedKeyRequestValidator` domain — chain id 10, with a
+  `verifyingContract`.
+- `getGaslessSignedKeyRequestMetadata()` signs the **offchain** counterpart.
+
+If you build the metadata with the first one and submit it as a `KEY_ADD`,
+Snapchain rejects it. Use `makeKeyAddBody()`, which picks the off-chain variant
+for you.
+
+Gasless keys differ from the old onchain ones in three ways:
+
+**Scopes.** Every gasless key declares the message types it may sign. A key
+scoped to `CAST_ADD` cannot publish a `LINK_ADD`. This client requests the set it
+actually needs:
+
+```
+cast:add, cast:remove, reaction:add, reaction:remove,
+link:add, link:remove, user-data:add,
+verification:add, verification:remove
+```
+
+`KEY_ADD` and `KEY_REMOVE` are **never** admissible scopes. A signer cannot mint
+or revoke another signer — if that were possible, one leaked app key would be
+able to grant itself unlimited successors. Onchain signers predate scoping and
+remain scope-free forever.
+
+**Sliding TTL.** Each key carries a TTL of at most 90 days, refreshed every time
+it signs a merged message. An actively used key stays alive; an abandoned one
+expires on its own. You do not have to remember to revoke keys you stopped using.
+
+**Nonces.** Each FID has a monotonically increasing user nonce. Every `KEY_ADD`
+must carry a nonce strictly greater than the FID's current value, which makes an
+intercepted authorization unreplayable. Read the current value first:
+
+```bash
+curl 'http://127.0.0.1:3381/v1/signersByFid?fid=<you>' | jq '.currentUserNonce'
+```
+
+Then submit `currentUserNonce + 1`. If you are writing retry logic: **a retry must
+re-read the nonce.** Replaying the same signed `KEY_ADD` fails with
+`nonce is not greater than stored nonce`, and so does a retry that reused the
+old value.
+
+Use `GET /v1/signersByFid`. The older `GetOnChainSignersByFid` returns onchain
+keys only and is deprecated — it will show you an empty list on an account whose
+only keys are gasless, which is a genuinely confusing way to spend an afternoon.
+
+A single FID can hold up to 1000 active gasless keys, counted separately from
+onchain ones. Gasless signers are live on mainnet as of engine version **V16**.
+
+### Step 3 — read, post, follow, react
+
+Reads go to your node:
+
+```bash
+curl 'http://127.0.0.1:3381/v1/castsByFid?fid=<you>&pageSize=10&reverse=true'
+curl 'http://127.0.0.1:3381/v1/userDataByFid?fid=<you>'
+curl 'http://127.0.0.1:3381/v1/linksByFid?fid=<you>&link_type=follow'
+curl 'http://127.0.0.1:3381/v1/reactionsByCast?target_fid=<them>&target_hash=0x…&reaction_type=Like'
+```
+
+Common parameters: `pageSize`, `pageToken`, `reverse=1`, and
+`startTimestamp` / `stopTimestamp` on the endpoints that support them. Paging is
+token-based — follow `nextPageToken` until it is empty.
+
+Writes are built, signed with the app key, serialized, and POSTed as raw
+protobuf bytes:
+
+```bash
+curl -X POST http://127.0.0.1:3381/v1/submitMessage \
+  -H 'content-type: application/octet-stream' \
+  --data-binary @message.encoded.protobuf
+```
+
+`Message.encode(msg).finish()` produces those bytes. Note the content type: it is
+**not** JSON, and sending JSON is the single most common mistake here.
+
+### Step 4 — include or exclude casts by client
+
+Farcaster does not put a client name in a message, so how do you tell which app
+posted a cast?
+
+There is a real answer, and it is not a heuristic. Every cast is signed by an app
+key, and every **gasless** app key carries a `requestFid` — the FID of the app
+that requested it, taken from the `SignedKeyRequest` metadata that was verified
+when the key was registered.
+
+So: `cast.signer` → the author's key list → `requestFid` → which client.
+
+```bash
+curl 'http://127.0.0.1:3381/v1/signersByFid?fid=<author>' | jq '.signers[] | {key, requestFid, scopes, expiresAt}'
+```
+
+The client resolves this for every author in your feed and labels each cast. Then
+"only show my client" and "hide that client" are simple filters on `requestFid`.
+
+Two honest caveats:
+
+- Keys registered the old way, **onchain**, have no `SignedKeyRequest` metadata
+  and therefore no `requestFid`. They can only be identified by their key. The
+  client falls back to showing `key:0x…` for those.
+- None of this is proof that a human used an app. It says which app's key signed
+  the message, which is the strongest claim the protocol actually supports.
+
+---
+
+## Seed phrase safety
+
+Read this before you paste anything.
+
+**A shell has `rm`.** `rm file` deletes a file. `rm -rf /` deletes everything,
+irreversibly, on a machine that may be someone's only copy. The command is not
+evil and no one proposes removing it. It is documented, it is powerful, and the
+documentation says: be careful, read it twice, understand what the flags do.
+
+A Farcaster seed phrase is `rm -rf /` for an account. It derives the custody
+address, and the custody address can transfer the FID, change recovery, and
+revoke every key. Anyone holding the words holds the account.
+
+So, stated plainly:
+
+- **Use a test account for this tutorial.** Register a throwaway FID, or use one
+  you would not mind losing. Do not paste your main account's seed phrase into
+  anything while following a tutorial.
+- **Only paste a seed phrase into software you can inspect.** This client is open
+  source, and the part that touches the seed is a few dozen lines. That should be
+  true of anything you give these words to, and usually is not.
+- **Prefer delegated signer authorization.** That is what this client does, and
+  it is the reason the design is defensible: the seed is used **once**, to sign a
+  single delegation. The key it produces is scoped (it cannot mint other keys),
+  time-limited (90 days, refreshed on use) and revocable by a `KEY_REMOVE`
+  message. After step 2, the seed is not needed for anything the client does.
+- **Never paste a seed phrase into a web page you did not start yourself.** This
+  client binds to `127.0.0.1` by default for exactly that reason. If you pass
+  `--bind 0.0.0.0`, you have published your seed phrase input box to your
+  network.
+- **Unused keys expire.** You do not have to remember to clean up. Deleting the
+  signer file is enough; the key dies on its own TTL.
+
+The comparison is not "seed phrases are bad". It is: this is a powerful tool, it
+is documented here, and you should know exactly what it does before you run it.
+
+---
+
+## Troubleshooting
+
+**`up` has been running for hours.** Expected on first run. The snapshot is
+several hundred GB. `readnode status` shows the countdown; `blockDelay` in single
+digits means done.
+
+**The node died mid-sync, disk full.** You used a 1 TB disk. The snapshot scratch
+directory needs room for a second copy. Use 2 TB.
+
+**`nonce is not greater than stored nonce`.** Another `KEY_ADD` or `KEY_REMOVE`
+landed first. Re-read `currentUserNonce` and submit a higher value. Never retry
+with the same nonce.
+
+**`invalid signature` on `KEY_ADD`.** The `KeyAdd` signature did not recover the
+FID's custody address. Check that the seed phrase you imported derives to the
+address that `idOf()` returns.
+
+**`invalid signed key request`.** Your metadata used the onchain
+`SignedKeyRequestValidator` domain. Build it with `makeKeyAddBody()`, which signs
+the off-chain domain.
+
+**`invalid scope`.** `KEY_ADD` and `KEY_REMOVE` can never be scopes. Anything
+outside the admissible set is rejected.
+
+**`mempoolSize` is `4294967295`.** Normal on a read node. It means "not
+reported".
+
+**The cast was accepted but never appeared.** You got validation, not inclusion.
+On a read node, the message depends on gossip reaching a validator. Submit again,
+or point writes at a validator endpoint for a stronger guarantee.
+
+**`bad_request.insufficient_storage`.** The FID is out of storage for that
+message category. Storage is rented onchain; this tool does not rent it.
+
+**A subscriber missed events.** Events are pruned after 3 days by default
+(`pruning.event_retention`). A subscriber resuming from an event id older than
+the retention window gets nothing and must backfill from the message APIs.
+
+---
+
+## Cost
+
+For a one-week run on AWS `m5.xlarge` + 2 TB gp3:
+
+| Line item | Rate | 7 days |
+| --- | --- | --- |
+| EC2 `m5.xlarge` | $0.192/hr | $32.26 |
+| EBS gp3 2 TB | $0.08/GB-month | $37.71 |
+| Public IPv4 | $0.005/hr | $0.84 |
+| Snapshot download | inbound is free | $0.00 |
+| **Total** | | **≈ $70** |
+
+Storage is billed by the calendar, not by usage, so it dominates and it keeps
+charging while the instance is stopped. Let it run a full month and the volume
+alone is $164. Delete the volume when you are done.
+
+Cheaper shapes for a short run:
+
+- **GCP** — the same machine with `pd-standard` at $0.04/GB-month instead of
+  $0.08. About **$52** for the week.
+- **Spot EC2** — roughly $0.07/hr, but interruption risk. Survivable here only
+  because the database lives on EBS, not on instance store.
+- **Run it for three days instead of seven** — about **$30**. Sync takes hours,
+  not days, so the node does not need to exist all week.
+
+The number to watch is the disk, not the CPU.
+
+---
+
+## Where the official docs drift
+
+Two things were out of date while this was written, and both are corrected above:
+
+1. `snapchain.farcaster.xyz/guides/writing-messages` notes that its linked
+   `hello-world` example **still registers its signer onchain via the key
+   gateway**. The gasless flow in that guide's step 3 replaces it and needs no
+   ETH.
+2. `GetOnChainSignersByFid` returns onchain keys only. Use
+   `GetSignersByFid` / `GET /v1/signersByFid`, which returns both kinds in one
+   list, plus `currentUserNonce` and the per-FID gasless limits.
+
+Point 1 is a live example in
+[`farcasterxyz/hub-monorepo`](https://github.com/farcasterxyz/hub-monorepo). If
+you are reading this and it still applies, a pull request is welcome — that
+repository is the canonical place for it.

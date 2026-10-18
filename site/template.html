@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="{{lang}}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}}</title>
+    <meta name="description" content="{{tagline}}" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="wrap">
+        <p class="eyebrow">Farcaster · Snapchain · no API keys</p>
+        <h1>{{title}}</h1>
+        <p class="sub">{{tagline}}</p>
+        <div class="hero-actions">
+          <a class="btn" href="#quickstart">Quickstart</a>
+          <a class="btn ghost" href="https://github.com/">GitHub repo</a>
+          <a class="btn ghost" href="/zh/">中文</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap layout">
+      <nav class="toc" aria-label="Contents">
+        <p class="toc-label">Contents</p>
+        <ul>
+          {{toc}}
+        </ul>
+      </nav>
+      <article class="doc">
+        {{content}}
+      </article>
+    </div>
+
+    <footer class="wrap footer">
+      <p>MIT licensed. Run it against a test account.</p>
+    </footer>
+  </body>
+</html>
