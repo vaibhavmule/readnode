@@ -227,6 +227,16 @@ gone and must be resubmitted.
 So: a read node does accept your writes, and it does relay them. It just offers a
 weaker guarantee than submitting to a validator directly.
 
+The client reads from `--node-url` and, by default, submits to the same node. If
+you have access to a validator's HTTP endpoint, split the two:
+
+```bash
+readnode client --submit-url https://<validator>:3381
+```
+
+Reads still come from your own node; casts, follows, reactions and the `KEY_ADD`
+go to the validator. `--auth` applies to the read node only.
+
 Either way, a `200` from `submitMessage` means **the message validated and was
 accepted for relay** — not that it is in a block. To confirm inclusion, watch for
 the `MERGE_MESSAGE` event or read the message back:
@@ -454,9 +464,10 @@ So, stated plainly:
 - **Use a test account for this tutorial.** Register a throwaway FID, or use one
   you would not mind losing. Do not paste your main account's seed phrase into
   anything while following a tutorial.
-- **Only paste a seed phrase into software you can inspect.** This client is open
-  source, and the part that touches the seed is a few dozen lines. That should be
-  true of anything you give these words to, and usually is not.
+- **Only paste a seed phrase into software from developers you trust** — and,
+  ideally, software you can inspect. This client is open source, and the part
+  that touches the seed is a few dozen lines. That should be true of anything you
+  give these words to, and usually is not.
 - **Prefer delegated signer authorization.** That is what this client does, and
   it is the reason the design is defensible: the seed is used **once**, to sign a
   single delegation. The key it produces is scoped (it cannot mint other keys),
@@ -503,7 +514,8 @@ reported".
 
 **The cast was accepted but never appeared.** You got validation, not inclusion.
 On a read node, the message depends on gossip reaching a validator. Submit again,
-or point writes at a validator endpoint for a stronger guarantee.
+or restart the client with `--submit-url` pointing at a validator for a stronger
+guarantee.
 
 **`bad_request.insufficient_storage`.** The FID is out of storage for that
 message category. Storage is rented onchain; this tool does not rent it.

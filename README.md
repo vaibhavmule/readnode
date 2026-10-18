@@ -79,7 +79,8 @@ The client holds your seed phrase **in memory only**, long enough to sign one
 delegation. It is never written to disk. The app key it derives is scoped,
 time-limited and revocable — that is the whole point of a delegated signer.
 
-Test with a throwaway account.
+Test with a throwaway account, and only paste a seed phrase into software from
+developers you trust.
 
 ## License
 

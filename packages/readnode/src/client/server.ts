@@ -23,6 +23,8 @@ import { loadSigner, saveSigner } from "../state.js";
 
 export interface ClientServerOptions {
   nodeUrl: string;
+  /** Validator (or other node) to submit writes to. Defaults to the read node. */
+  submitUrl?: string;
   port: number;
   host?: string;
   nodeAuth?: NodeAuth;
@@ -70,6 +72,8 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
 
 export async function runClientServer(options: ClientServerOptions): Promise<void> {
   const node = new SnapchainNode(options.nodeUrl, options.nodeAuth);
+  // --auth belongs to the read node; a separate submit endpoint gets none.
+  const submitNode = options.submitUrl ? new SnapchainNode(options.submitUrl) : node;
   const directory = new ClientDirectory();
   const feed = new FeedBuilder(node, directory);
   const session: Session = {};
@@ -103,7 +107,7 @@ export async function runClientServer(options: ClientServerOptions): Promise<voi
   function publisher(): Publisher {
     const active = requireSigner();
     return new Publisher({
-      node,
+      node: submitNode,
       fid: requireFid(),
       signer: signerFromPrivateKey(active.privateKey),
     });
@@ -112,6 +116,7 @@ export async function runClientServer(options: ClientServerOptions): Promise<voi
   async function statePayload(): Promise<unknown> {
     return {
       nodeUrl: options.nodeUrl,
+      submitUrl: options.submitUrl ?? options.nodeUrl,
       custodyAddress: session.custodyAddress ?? null,
       fid: session.fid ?? null,
       custodyMatches: session.custodyMatches ?? null,
@@ -209,7 +214,7 @@ export async function runClientServer(options: ClientServerOptions): Promise<voi
       const mnemonic = String(body.mnemonic ?? "");
       if (!mnemonic) throw new Error("Seed phrase is required to authorize the app key.");
       const custody = custodyAccountFromMnemonic(mnemonic);
-      signer = await registerGaslessSigner({ node, fid, custody });
+      signer = await registerGaslessSigner({ node, submitNode, fid, custody });
       await saveSigner({
         fid,
         privateKey: `0x${Buffer.from(signer.privateKey).toString("hex")}`,
@@ -232,6 +237,7 @@ export async function runClientServer(options: ClientServerOptions): Promise<voi
       const custody = custodyAccountFromMnemonic(mnemonic);
       const result = await revokeGaslessSigner({
         node,
+        submitNode,
         fid: requireFid(),
         custody,
         privateKey: active.privateKey,
@@ -372,7 +378,7 @@ export async function runClientServer(options: ClientServerOptions): Promise<voi
   });
 
   process.stdout.write(
-    `\nreadnode client  →  http://${bind}:${options.port}\nreading from     →  ${options.nodeUrl}\n\n`,
+    `\nreadnode client  →  http://${bind}:${options.port}\nreading from     →  ${options.nodeUrl}\nwriting to       →  ${options.submitUrl ?? `${options.nodeUrl} (relayed to validators)`}\n\n`,
   );
   process.stdout.write("Press Ctrl-C to stop.\n");
 }

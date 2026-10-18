@@ -32,6 +32,8 @@ export interface GaslessSigner {
 
 export interface RegisterSignerOptions {
   node: SnapchainNode;
+  /** Where to send the KEY_ADD. Defaults to `node`; pass a validator for a stronger guarantee. */
+  submitNode?: SnapchainNode;
   fid: number;
   custody: HDAccount;
   scopes?: MessageType[];
@@ -92,7 +94,9 @@ export async function registerGaslessSigner(
     await makeKeyAdd(body, { fid, network: FarcasterNetwork.MAINNET }, signer),
   );
 
-  const submitted = await node.submitMessage(Message.encode(message).finish());
+  const submitted = await (options.submitNode ?? node).submitMessage(
+    Message.encode(message).finish(),
+  );
 
   return {
     privateKey,
@@ -109,6 +113,7 @@ export async function registerGaslessSigner(
 
 export async function revokeGaslessSigner(options: {
   node: SnapchainNode;
+  submitNode?: SnapchainNode;
   fid: number;
   custody?: HDAccount;
   privateKey: Uint8Array;
@@ -139,5 +144,5 @@ export async function revokeGaslessSigner(options: {
     await makeKeyRemove(body, { fid, network: FarcasterNetwork.MAINNET }, signer),
   );
 
-  return node.submitMessage(Message.encode(message).finish());
+  return (options.submitNode ?? node).submitMessage(Message.encode(message).finish());
 }

@@ -9,10 +9,16 @@ Prizes: $2,048 1st, $512 2nd, $128 honorable mentions (USDC to Farcaster wallet)
 2. Create a client that reads from that node
 
 ## Client must
-- Read from own read node; submit casts to a validator endpoint (explain why)
+- Read from own read node; writes go via the read node, which relays to validators (explain how)
 - Import existing seed phrase (account with storage)
-- Issue its own app key (one small Optimism tx)
+- Issue its own app key (gasless `KEY_ADD`, no Optimism tx — see clarification 2)
 - Read feed, post casts, follow, react, include/exclude casts from other clients
+
+## Clarifications (balajis.eth, ~3h after the post; cc @10xchris.eth)
+1. Read nodes *do* take writes and forward them to validators (docs updated the week before: snapchain.farcaster.xyz/node-types).
+2. App keys are gasless — no Optimism transaction (snapchain.farcaster.xyz/guides/writing-messages, updated ~2 months earlier).
+3. It is a *developer* tutorial: treat seed phrases like `rm -rf`. Say: use a test account, only paste seed phrases into software from devs you trust, prefer delegated signer authorization.
+- Outdated docs found along the way → PRs to github.com/farcasterxyz repos (not AI slop). "Will definitely help with prize-winning."
 
 ## Tutorial must
 - Mobile + desktop friendly microsite, quickstart at top

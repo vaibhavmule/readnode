@@ -4,6 +4,7 @@ import type { NodeAuth } from "../core/index.js";
 
 export interface ClientFlags {
   nodeUrl?: string;
+  submitUrl?: string;
   port?: number;
   bind?: string;
   auth?: string;
@@ -23,6 +24,7 @@ export async function client(flags: ClientFlags): Promise<void> {
 
   await runClientServer({
     nodeUrl,
+    submitUrl: flags.submitUrl,
     port: flags.port ?? 3939,
     host: flags.bind,
     nodeAuth: flags.auth ? parseAuth(flags.auth) : undefined,

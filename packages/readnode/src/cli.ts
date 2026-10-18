@@ -35,6 +35,8 @@ Up options
 
 Client options
   --node-url <url>    node to read from (default: from state)
+  --submit-url <url>  node to submit writes to, e.g. a validator
+                      (default: the read node, which relays to validators)
   --port <port>       local port (default: 3939)
   --bind <address>    bind address (default: 127.0.0.1)
   --auth <user:pass>  basic auth for the node
@@ -61,6 +63,7 @@ async function main(): Promise<void> {
       host: { type: "string" },
       local: { type: "boolean" },
       "node-url": { type: "string" },
+      "submit-url": { type: "string" },
       timeout: { type: "string" },
       port: { type: "string" },
       bind: { type: "string" },
@@ -117,6 +120,7 @@ async function main(): Promise<void> {
     case "client":
       await client({
         nodeUrl: values["node-url"],
+        submitUrl: values["submit-url"],
         port: number(values.port),
         bind: values.bind,
         auth: values.auth,
