@@ -5,25 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{title}}</title>
     <meta name="description" content="{{tagline}}" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="{{assets}}styles.css" />
   </head>
   <body>
     <header class="hero">
       <div class="wrap">
-        <p class="eyebrow">Farcaster · Snapchain · no API keys</p>
+        <p class="eyebrow">{{eyebrow}}</p>
         <h1>{{title}}</h1>
         <p class="sub">{{tagline}}</p>
         <div class="hero-actions">
-          <a class="btn" href="#quickstart">Quickstart</a>
-          <a class="btn ghost" href="https://github.com/">GitHub repo</a>
-          <a class="btn ghost" href="/zh/">中文</a>
+          <a class="btn" href="#{{quickstartId}}">{{quickstart}}</a>
+          <a class="btn ghost" href="https://github.com/">{{repo}}</a>
+          <a class="btn ghost" href="{{switchHref}}" hreflang="{{switchLang}}" lang="{{switchLang}}">{{switchLabel}}</a>
         </div>
       </div>
     </header>
 
     <div class="wrap layout">
-      <nav class="toc" aria-label="Contents">
-        <p class="toc-label">Contents</p>
+      <nav class="toc" aria-label="{{contents}}">
+        <p class="toc-label">{{contents}}</p>
         <ul>
           {{toc}}
         </ul>
@@ -34,7 +34,7 @@
     </div>
 
     <footer class="wrap footer">
-      <p>MIT licensed. Run it against a test account.</p>
+      <p>{{footer}}</p>
     </footer>
   </body>
 </html>
