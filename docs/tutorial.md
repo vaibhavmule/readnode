@@ -448,18 +448,14 @@ Two honest caveats:
 
 ## Seed phrase safety
 
-Read this before you paste anything.
+The client asks for your seed phrase once, to authorize its app key. Know what
+you are handing over before you paste it.
 
-**A shell has `rm`.** `rm file` deletes a file. `rm -rf /` deletes everything,
-irreversibly, on a machine that may be someone's only copy. The command is not
-evil and no one proposes removing it. It is documented, it is powerful, and the
-documentation says: be careful, read it twice, understand what the flags do.
+The seed phrase derives your custody address, and the custody address owns your
+FID. Whoever has the phrase can transfer the FID, change its recovery address,
+and add or revoke any key. Nobody can undo that for you.
 
-A Farcaster seed phrase is `rm -rf /` for an account. It derives the custody
-address, and the custody address can transfer the FID, change recovery, and
-revoke every key. Anyone holding the words holds the account.
-
-So, stated plainly:
+So:
 
 - **Use a test account for this tutorial.** Register a throwaway FID, or use one
   you would not mind losing. Do not paste your main account's seed phrase into
@@ -468,20 +464,17 @@ So, stated plainly:
   ideally, software you can inspect. This client is open source, and the part
   that touches the seed is a few dozen lines. That should be true of anything you
   give these words to, and usually is not.
-- **Prefer delegated signer authorization.** That is what this client does, and
-  it is the reason the design is defensible: the seed is used **once**, to sign a
-  single delegation. The key it produces is scoped (it cannot mint other keys),
-  time-limited (90 days, refreshed on use) and revocable by a `KEY_REMOVE`
-  message. After step 2, the seed is not needed for anything the client does.
+- **Prefer delegated signer authorization.** This client uses the seed phrase
+  to sign one delegation: an app key that is scoped (it cannot add other keys),
+  expires after 90 days unused, and can be revoked with a `KEY_REMOVE`. Posting,
+  following and reacting use only that key. The seed phrase is needed again only
+  if you revoke the key from the client.
 - **Never paste a seed phrase into a web page you did not start yourself.** This
   client binds to `127.0.0.1` by default for exactly that reason. If you pass
   `--bind 0.0.0.0`, you have published your seed phrase input box to your
   network.
 - **Unused keys expire.** You do not have to remember to clean up. Deleting the
   signer file is enough; the key dies on its own TTL.
-
-The comparison is not "seed phrases are bad". It is: this is a powerful tool, it
-is documented here, and you should know exactly what it does before you run it.
 
 ---
 
