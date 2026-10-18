@@ -84,6 +84,17 @@ Nothing above spends money. `--dry-run` prints every provider API call.
    never survived Snapchain's own validation.
 6. **Microsite not deployed.** The hero's GitHub link is a placeholder.
 
+7. **Tutorial claims to check on the real-box run** (stated in the copy, not yet
+   observed):
+   - the read-node vs validator table: validator set from the onchain registry
+     vs `validators.toml`; "restarting removes a vote"
+   - Troubleshooting error strings, especially `nonce is not greater than stored
+     nonce`; the other headings were reworded to describe the rejection instead
+   - storage: no-storage FID rejected; full category prunes oldest messages
+   - snapshot size and the ~1.1 TB peak; `Processed decided block` log line
+   - test-account section: the Farcaster app's signup cost and where it shows
+     the recovery phrase
+
 ---
 
 ## Queued changes (offered, not started)
