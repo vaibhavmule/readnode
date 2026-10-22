@@ -12,6 +12,7 @@ export interface RunOptions {
   allowFailure?: boolean;
   inherit?: boolean;
   input?: string;
+  stdio?: ("pipe" | "inherit" | "ignore")[];
 }
 
 export async function run(
@@ -23,9 +24,11 @@ export async function run(
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: options.env ?? process.env,
-      stdio: options.inherit
-        ? "inherit"
-        : [options.input ? "pipe" : "ignore", "pipe", "pipe"],
+      stdio:
+        options.stdio ??
+        (options.inherit
+          ? "inherit"
+          : [options.input ? "pipe" : "ignore", "pipe", "pipe"]),
     });
 
     if (options.input && child.stdin) {
@@ -80,20 +83,23 @@ export function sshArgs(host: string, sshKey?: string): string[] {
 export async function ssh(
   host: string,
   command: string,
-  options: { sshKey?: string; inherit?: boolean } = {},
+  options: { sshKey?: string; inherit?: boolean; allowFailure?: boolean } = {},
 ): Promise<RunResult> {
   return run("ssh", [...sshArgs(host, options.sshKey), command], {
     inherit: options.inherit,
+    allowFailure: options.allowFailure,
   });
 }
 
 export async function sshScript(
   host: string,
   script: string,
-  options: { sshKey?: string; inherit?: boolean } = {},
+  options: { sshKey?: string; inherit?: boolean; command?: string } = {},
 ): Promise<RunResult> {
-  return run("ssh", [...sshArgs(host, options.sshKey), "bash -s"], {
-    inherit: options.inherit,
+  // stdin carries the script, so it can't also be inherited from the terminal.
+  return run("ssh", [...sshArgs(host, options.sshKey), options.command ?? "bash -s"], {
     input: script,
+    allowFailure: true,
+    stdio: options.inherit ? ["pipe", "inherit", "inherit"] : undefined,
   });
 }

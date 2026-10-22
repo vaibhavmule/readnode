@@ -1,4 +1,4 @@
-import { run, sshScript } from "../exec.js";
+import { run, ssh, sshScript } from "../exec.js";
 import { SnapchainNode } from "../core/index.js";
 import { loadState, saveState } from "../state.js";
 import { renderCloudInit } from "../cloud-init.js";
@@ -22,6 +22,10 @@ export function nodeUrlForHost(host: string): string {
   return `http://${host.replace(/^[^@]*@/, "")}:3381`;
 }
 
+// These providers boot with our cloud-init as user-data, so the install is
+// already running by the time `up` is called. Running it again would race it.
+const CLOUD_INIT_PROVIDERS = new Set(["aws", "gcp", "hetzner"]);
+
 async function install(
   host: string,
   sshKey: string | undefined,
@@ -30,13 +34,48 @@ async function install(
   process.stdout.write(
     `Installing Snapchain on ${host} (this takes a few minutes)...\n`,
   );
+  const sudo = host.startsWith("root@") ? "" : "sudo ";
   const result = await sshScript(host, renderCloudInit({ fid }), {
     sshKey,
     inherit: true,
+    command: `${sudo}bash -s`,
   });
   if (result.code !== 0) {
     throw new Error(`Remote install failed with exit code ${result.code}.`);
   }
+}
+
+async function waitForCloudInit(
+  host: string,
+  sshKey: string | undefined,
+): Promise<void> {
+  process.stdout.write(`Waiting for ${host} to accept SSH...\n`);
+  for (let attempt = 0; ; attempt++) {
+    const probe = await ssh(host, "true", { sshKey, allowFailure: true });
+    if (probe.code === 0) break;
+    if (attempt >= 40) {
+      throw new Error(`Could not SSH to ${host} after 10 minutes:\n${probe.stderr}`);
+    }
+    await sleep(15);
+  }
+
+  process.stdout.write(
+    "Waiting for the boot-time install (Docker + Snapchain) to finish...\n",
+  );
+  const status = await ssh(host, "sudo cloud-init status --wait", {
+    sshKey,
+    allowFailure: true,
+  });
+  if (status.code !== 0) {
+    const log = await ssh(host, "sudo tail -n 60 /var/log/cloud-init-output.log", {
+      sshKey,
+      allowFailure: true,
+    });
+    throw new Error(
+      `The install on ${host} failed (${status.stdout.trim()}). Last lines of cloud-init-output.log:\n${log.stdout}`,
+    );
+  }
+  process.stdout.write("Snapchain is installed and running.\n");
 }
 
 export async function up(flags: UpFlags): Promise<void> {
@@ -56,8 +95,13 @@ export async function up(flags: UpFlags): Promise<void> {
       throw new Error("Local install failed. See output above.");
     }
   } else if (host) {
-    if (!fid) throw new Error("No FID recorded. Run `readnode provision --fid <n>` first.");
-    await install(host, flags.sshKey ?? state.sshKey, fid);
+    const sshKey = flags.sshKey ?? state.sshKey;
+    if (!flags.host && state.provider && CLOUD_INIT_PROVIDERS.has(state.provider)) {
+      await waitForCloudInit(host, sshKey);
+    } else {
+      if (!fid) throw new Error("No FID recorded. Run `readnode provision --fid <n>` first.");
+      await install(host, sshKey, fid);
+    }
   }
 
   const nodeUrl = flags.nodeUrl ?? state.nodeUrl ?? (host ? nodeUrlForHost(host) : undefined);

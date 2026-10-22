@@ -1,4 +1,8 @@
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { run } from "./exec.js";
+import { STATE_DIR } from "./state.js";
 
 export interface ProvisionRequest {
   name: string;
@@ -103,6 +107,33 @@ const awsProvider: Provider = {
       throw new Error(`Could not resolve Ubuntu AMI, got: ${imageId}`);
     }
 
+    // Without a key pair the instance boots fine but nobody can SSH in, so
+    // `readnode up` has no way to watch the install. Make one if none given.
+    let sshKey = request.sshKey;
+    let keyName = sshKey ? basename(sshKey).replace(/\.pem$/, "") : `${request.name}-key`;
+    if (!sshKey) {
+      sshKey = join(STATE_DIR, `${keyName}.pem`);
+      if (request.dryRun) {
+        await exec(true, "aws", ["ec2", "create-key-pair", "--key-name", keyName, "--region", request.region]);
+      } else if (!existsSync(sshKey)) {
+        const material = await exec(false, "aws", [
+          "ec2",
+          "create-key-pair",
+          "--key-name",
+          keyName,
+          "--query",
+          "KeyMaterial",
+          "--output",
+          "text",
+          "--region",
+          request.region,
+        ]);
+        await mkdir(STATE_DIR, { recursive: true });
+        await writeFile(sshKey, `${material}\n`, { mode: 0o600 });
+        notes.push(`Created key pair ${keyName}; private key saved to ${sshKey}.`);
+      }
+    }
+
     await exec(request.dryRun, "aws", [
       "ec2",
       "create-security-group",
@@ -147,7 +178,7 @@ const awsProvider: Provider = {
     ]);
 
     const tagSpec = `ResourceType=instance,Tags=[{Key=Name,Value=${request.name}}]`;
-    const blockDevice = `DeviceName=/dev/sda1,Ebs={VolumeSize=${request.diskGb},VolumeType=gp3}`;
+    const blockDevice = `DeviceName=/dev/sda1,Ebs={VolumeSize=${request.diskGb},VolumeType=gp3,Iops=6000,Throughput=500}`;
 
     const runArgs = [
       "ec2",
@@ -173,16 +204,14 @@ const awsProvider: Provider = {
       "--region",
       request.region,
     ];
-    if (request.sshKey) {
-      runArgs.push("--key-name", request.sshKey.split("/").pop() ?? "");
-    }
+    runArgs.push("--key-name", keyName);
 
     const instanceId = await exec(request.dryRun, "aws", runArgs);
 
     if (request.dryRun) {
       return {
         host: "<ec2-public-ip>",
-        sshKey: request.sshKey,
+        sshKey,
         instanceName: request.name,
         notes: [
           `EC2 ${request.instanceType} + ${request.diskGb} GB gp3.`,
@@ -219,7 +248,7 @@ const awsProvider: Provider = {
 
     return {
       host: `ubuntu@${ip}`,
-      sshKey: request.sshKey,
+      sshKey,
       instanceName: request.name,
       notes,
     };
