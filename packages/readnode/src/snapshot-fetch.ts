@@ -42,9 +42,28 @@ fetch_chunk() {
 }
 export -f fetch_chunk
 
+unpack_shard() {
+  # Single-core gunzip is the bottleneck here, so this runs in the background
+  # while the next shard downloads.
+  local shard="$1" dir="$WORK/chunks-$1"
+  echo "readnode-snapshot: unpacking shard $shard"
+  rm -rf "$WORK/db/shard-$shard"
+  # Each chunk is its own gzip member; concatenated they decompress to one tar.
+  while read -r c; do cat "$dir/$c"; done < "$dir/list" | gunzip | tar -x -C "$WORK/db"
+  touch "$WORK/done-$shard"
+  rm -rf "$dir"
+  echo "readnode-snapshot: shard $shard unpacked"
+}
+
+unpack_pids=()
 for shard in 1 2 0; do
   [ -f "$WORK/done-$shard" ] && { echo "readnode-snapshot: shard $shard already done"; continue; }
   dir="$WORK/chunks-$shard"
+  # Fully downloaded on an earlier run: don't let a rotation since then discard it.
+  if [ -f "$dir/complete" ]; then
+    unpack_shard "$shard" & unpack_pids+=($!)
+    continue
+  fi
   for attempt in 1 2 3 4; do
     meta=$(curl -fsS --retry 5 "$BUCKET/$NETWORK/$shard/latest.json")
     key=$(echo "$meta" | jq -r .key_base)
@@ -70,13 +89,13 @@ for shard in 1 2 0; do
     sleep 30
   done
 
-  echo "readnode-snapshot: unpacking shard $shard"
-  rm -rf "$WORK/db/shard-$shard"
-  # Each chunk is its own gzip member; concatenated they decompress to one tar.
-  while read -r c; do cat "$dir/$c"; done < "$dir/list" | gunzip | tar -x -C "$WORK/db"
-  touch "$WORK/done-$shard"
-  rm -rf "$dir"
-  echo "readnode-snapshot: shard $shard done"
+  touch "$dir/complete"
+  echo "readnode-snapshot: shard $shard downloaded"
+  unpack_shard "$shard" & unpack_pids+=($!)
+done
+
+for pid in "\${unpack_pids[@]}"; do
+  wait "$pid" || { echo "readnode-snapshot: unpacking failed; rerun to retry"; exit 1; }
 done
 
 mkdir -p "$ROCKS"
