@@ -2,6 +2,7 @@ import { run, ssh, sshScript } from "../exec.js";
 import { SnapchainNode } from "../core/index.js";
 import { loadState, saveState } from "../state.js";
 import { renderCloudInit } from "../cloud-init.js";
+import { SNAPSHOT_LOG } from "../snapshot-fetch.js";
 
 export interface UpFlags {
   host?: string;
@@ -60,13 +61,26 @@ async function waitForCloudInit(
   }
 
   process.stdout.write(
-    "Waiting for the boot-time install (Docker + Snapchain) to finish...\n",
+    "Waiting for the boot-time install (Docker, the snapshot, Snapchain) to finish.\n" +
+      "The snapshot is ~450 GB, so expect a few hours. Ctrl-C is safe; rerun `readnode up` to keep watching.\n",
   );
-  const status = await ssh(host, "sudo cloud-init status --wait", {
-    sshKey,
-    allowFailure: true,
-  });
-  if (status.code !== 0) {
+  let lastLine = "";
+  let status;
+  for (;;) {
+    status = await ssh(
+      host,
+      `sudo cloud-init status | tail -n 1; sudo tail -n 1 ${SNAPSHOT_LOG} 2>/dev/null || true`,
+      { sshKey, allowFailure: true },
+    );
+    const [state = "", progress = ""] = status.stdout.trim().split("\n");
+    if (progress && progress !== lastLine) {
+      process.stdout.write(`  ${new Date().toISOString().slice(11, 19)}  ${progress.replace(/^readnode-snapshot: /, "")}\n`);
+      lastLine = progress;
+    }
+    if (/status: (done|error|degraded)/.test(state)) break;
+    await sleep(60);
+  }
+  if (!/status: done/.test(status.stdout)) {
     const log = await ssh(host, "sudo tail -n 60 /var/log/cloud-init-output.log", {
       sshKey,
       allowFailure: true,

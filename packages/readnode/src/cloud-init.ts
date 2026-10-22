@@ -1,3 +1,5 @@
+import { SNAPSHOT_LOG, renderSnapshotFetch } from "./snapshot-fetch.js";
+
 export interface CloudInitOptions {
   fid: number;
   dataDir?: string;
@@ -42,6 +44,13 @@ HUB_OPERATOR_FID=${options.fid}
 READNODE_ENV
 ${skipCrontab ? `echo "SKIP_CRONTAB=true" >> "$NODE_HOME/snapchain/.env"` : ""}
 chown -R "$NODE_USER:$NODE_USER" "$NODE_HOME/snapchain"
+
+# Fetch the snapshot before Snapchain's first start; see snapshot-fetch.ts for why.
+cat > /usr/local/bin/readnode-snapshot <<'READNODE_SNAPSHOT'
+${renderSnapshotFetch()}
+READNODE_SNAPSHOT
+chmod +x /usr/local/bin/readnode-snapshot
+/usr/local/bin/readnode-snapshot "$NODE_HOME/snapchain/.rocks" 2>&1 | tee -a ${SNAPSHOT_LOG}
 
 # The official bootstrap ends in \`exec ./snapchain.sh upgrade < /dev/tty\`, which
 # fails with no terminal (cloud-init, \`ssh host bash -s\`). And \`upgrade\` itself
