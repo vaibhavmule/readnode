@@ -34,9 +34,10 @@ fi
 mkdir -p "$WORK/db"
 
 fetch_chunk() {
-  # $1 dir, $2 url prefix, $3 chunk name. A complete chunk is a valid gzip member.
+  # $1 dir, $2 url prefix, $3 chunk name. Chunks land as .part and are renamed
+  # only once curl succeeds, so any chunk without the suffix is complete.
   local f="$1/$3"
-  if [ -s "$f" ] && gzip -t "$f" 2>/dev/null; then return 0; fi
+  [ -s "$f" ] && return 0
   curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -o "$f.part" "$2/$3" && mv "$f.part" "$f"
 }
 export -f fetch_chunk
