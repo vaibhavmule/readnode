@@ -10,8 +10,18 @@
 
 三条命令。前提：你已经有一个**租了存储**的 Farcaster 账号——请用测试账号（[如何获取](#开始之前准备一个测试账号)）。
 
+先安装 CLI（Node 20.11+）。使用 AWS 时还需要装好 [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) 并配置好凭证（`aws configure`）。
+
 ```bash
-# 0. 准备计算资源
+git clone https://github.com/vaibhavmule/readnode.git && cd readnode
+npm install && npm run build -w readnode
+npm install -g ./packages/readnode    # 把 `readnode` 加到 PATH
+```
+
+然后：
+
+```bash
+# 0. 准备计算资源（默认 us-east-1：节点的对等方都在那里）
 readnode provision --provider aws --username yourname
 
 # 1. 安装读取节点并等待同步
@@ -25,9 +35,10 @@ readnode client
 
 `readnode provision` 创建机器并装好 Docker。`readnode up` 安装 Snapchain、启动节点，并一直阻塞到节点追平链头。`readnode client` 在 `http://127.0.0.1:3939` 上提供服务——在那里导入助记词、签发应用密钥，然后就可以看信息流、发帖、关注和点赞了。
 
-有两件事要提前知道：
+几件事要提前知道：
 
-- 第一次运行 `up` 会**卡住好几个小时**。它在下载并解包网络状态的快照，解包后约 550 GB。
+- 第一次运行 `up` 会**等两到三个小时**：机器在下载并解包网络状态的快照，解包后约 560 GB。Snapchain 启动后，`up` 还会继续等节点从快照追到链头。快照最多可能是一天前的，所以这一步从几分钟到大约半天不等；追赶期间客户端已经可以从节点读取。任何时候按 Ctrl-C 都是安全的，重新运行 `readnode up` 即可继续观察。
+- 保持默认区域 `us-east-1`。几乎所有 Snapchain 对等节点都在 AWS us-east-1，读取节点一次只向对等方取一个区块，所以追赶速度取决于到它们的往返延迟。一台在孟买的节点每秒只能把差距缩小约 1.8 秒，一天前的快照要花半天多才能追上；靠近对等方会快得多。
 - 不需要任何人的 API key。你需要一个云服务账号来租机器，云账单是唯一的开销。
 
 ---
@@ -58,10 +69,20 @@ readnode client
 
 客户端需要一个**已经有存储**的 Farcaster 账号的助记词。请专门为此新建一个账号，不要用你的主账号。
 
-两种获取方式：
+在 Farcaster 应用里新建的账号用通行密钥（passkey）登录，不会给你助记词。所以最简单的办法是直接在链上注册一个新 FID。仓库里有现成的脚本，花费约 **0.2 美元的 Optimism ETH**（一个 FID 加一个存储单位，再加 gas）：
 
-- **官方 Farcaster 应用**，[farcaster.xyz](https://www.farcaster.xyz/)。新注册一个账号；应用会替你注册 FID、租存储并设置用户名。应用设置里显示的恢复短语（recovery phrase），就是本教程要的助记词。
-- **自己上链注册。** 通过 OP Mainnet 上的 `IdGateway`（或同时租存储的 `Bundler`）注册 FID。官方的[创建账号](https://docs.farcaster.xyz/developers/guides/accounts/create-account)指南有完整步骤。这需要在 Optimism 上花少量 ETH。
+```bash
+node packages/readnode/scripts/register-test-account.mjs
+# → 生成一个一次性钱包，助记词保存在 ~/.readnode/test-account.json（权限 0600），并打印地址
+
+# 往该地址转约 0.0005 ETH（Optimism 网络），然后：
+node packages/readnode/scripts/register-test-account.mjs register
+# → 调用 IdGateway.register()，打印你的新 FID
+```
+
+`~/.readnode/test-account.json` 里的助记词就是要导入客户端的那个。这个账号没有用户名，客户端按 FID 显示它。如果你已经有一个用助记词创建的账号（较早的 Warpcast 账号，或你自己注册的），而且丢了也不心疼，也可以用它。
+
+想手动注册的话，官方的[创建账号](https://docs.farcaster.xyz/developers/guides/accounts/create-account)指南讲解了 `IdGateway` 和 `Bundler`。
 
 ---
 
@@ -130,7 +151,7 @@ curl 'http://127.0.0.1:3381/v1/storageLimitsByFid?fid=1'
 两个值得记牢的推论：
 
 1. **存储是按账号计的上限，由协议强制执行。** 没有存储的 FID 完全不能写入。某个类别满了之后，节点会删掉该类别里最旧的消息，为新消息腾出空间。
-2. **这就是本教程要求「账号已经有存储」的原因。** 租存储意味着在 Optimism 上发一笔交易。本工具从不发交易，只读取 Optimism 来查你的 FID。
+2. **这就是本教程要求「账号已经有存储」的原因。** 租存储意味着在 Optimism 上发一笔交易。客户端从不发交易，只读取 Optimism 来查你的 FID。（测试账号脚本只发一笔交易 `IdGateway.register`，它在注册 FID 的同时租下第一个存储单位。）
 
 ### Snapchain 消息
 
@@ -201,21 +222,18 @@ curl 'http://127.0.0.1:3381/v1/castsByFid?fid=<你的fid>&pageSize=1&reverse=tru
 
 **16 GB 内存 / 4 CPU。** 节点把主网全量状态放在 RocksDB 里。
 
-**2 TB 磁盘。** 这一条最让人意外，因为数据库比这小得多：
+**2 TB 磁盘（默认值）。** 数据库本身比这小：
 
 ```bash
 curl -s localhost:3381/v1/info | jq '.dbStats.approxSize'
-# 约 548 GB
+# 约 557 GB
 ```
 
-`~/snapchain` 下有两个目录：
+多出来的空间是给第一次同步用的。快照以压缩分块的形式下载，有一段时间分块和解包后的数据库同时占着磁盘。Snapchain 自带的下载器会在 `.rocks.snapshot/` 里放一整份副本，峰值约 1.1 TB，所以在 1 TB 的盘上会中途写满，节点以一个毫无帮助的错误挂掉。
 
-| 路径 | 作用 |
-| --- | --- |
-| `.rocks/` | 数据库 |
-| `.rocks.snapshot/` | 下载与解压快照的临时空间 |
+`readnode` 会在 Snapchain 第一次启动之前自己下载快照，放在 `.rocks.readnode/`。每个分片一下载完就解包并删掉它的分块，所以峰值更低：实测约 **800 GB**。因此用 `readnode` 时 1 TB 也够，但留给数据库增长的空间很少；`--disk-gb 2048` 是稳妥的默认值。
 
-快照先下载到 `.rocks.snapshot/`，再解包到 `.rocks/`，所以有一段时间两者同时存在：大约是状态大小的**两倍**，约 1.1 TB。1 TB 的盘会在下载中途被塞满，节点随即以一个毫无帮助的错误挂掉。第二个 TB 不是为增长预留的余量，而是完成第一次同步的必需条件。
+自己下载快照还有第二个原因。快照桶每天为每个分片发布一个新快照，并立即删除旧的。Snapchain 的下载器只读一次快照列表，然后花几个小时依次下载各分片，所以在轮到之前就已轮换的分片会返回 404。节点崩溃、以非空数据库重启、跳过快照，然后从创世块开始同步那个分片，这要花好几天。`readnode` 在下载每个分片前重新读取列表，分片若在下载中途轮换就重新开始，并同时下载八个分块。进度写在 `/var/log/readnode-snapshot.log`，`readnode up` 会把它打印出来。
 
 **端口。** 三个端口都必须能从公网访问：
 
@@ -353,9 +371,17 @@ curl 'http://127.0.0.1:3381/v1/signersByFid?fid=<作者fid>' | jq '.signers[] | 
 
 ## 故障排查
 
-**`up` 跑了几个小时。** 首次运行这是正常的。快照有几百 GB。`readnode status` 会显示倒计时；`blockDelay` 变成个位数就完成了。
+**`up` 跑了几个小时。** 首次运行这是正常的。快照有几百 GB，之后 Snapchain 还要从快照的时间点追上来。`readnode status` 会显示倒计时；`blockDelay` 变成个位数就完成了。如果倒计时很慢，检查区域：离 us-east-1 越远，每次取区块都要付出往返延迟。
 
-**节点在同步中途挂了，磁盘满。** 你用了 1 TB 的盘。快照临时目录需要容纳第二份状态。请用 2 TB。
+**节点在同步中途挂了，磁盘满。** 你在 1 TB 的盘上用了 Snapchain 自带的快照下载器，它需要容纳第二份状态。请用 2 TB，或者让 `readnode` 来下载快照。
+
+**某个分片的 `blockDelay` 巨大且几乎不动。** 这个分片在从创世块同步，通常是因为它的快照在 Snapchain 自带下载过程中轮换了（见「为什么硬件规格是这样」）。在节点上重新下载：
+
+```bash
+cd ~/snapchain && sudo docker compose down
+sudo rm -rf .rocks && sudo readnode-snapshot "$PWD/.rocks"
+sudo docker compose up -d
+```
 
 **`KEY_ADD` 因 nonce 被拒**（`nonce is not greater than stored nonce`）。 有另一条 `KEY_ADD` 或 `KEY_REMOVE` 先落地了。重新读取 `currentUserNonce` 并提交更大的值。永远不要用同一个 nonce 重试。
 

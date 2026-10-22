@@ -11,8 +11,20 @@ the fnames registry and a public Optimism RPC, both to look up your FID.
 Three commands. You need a Farcaster account that already has storage rented —
 use a test account ([how to get one](#before-you-start-a-test-account)).
 
+First install the CLI (Node 20.11+). For the AWS provider you also need the
+[AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+with credentials configured (`aws configure`).
+
 ```bash
-# 0. Provision the compute
+git clone https://github.com/vaibhavmule/readnode.git && cd readnode
+npm install && npm run build -w readnode
+npm install -g ./packages/readnode    # puts `readnode` on your PATH
+```
+
+Then:
+
+```bash
+# 0. Provision the compute (us-east-1 by default: that is where the peers are)
 readnode provision --provider aws --username yourname
 
 # 1. Install the read node and wait for it to sync
@@ -31,10 +43,20 @@ of the chain. `readnode client` serves the client on
 `http://127.0.0.1:3939` — import your seed phrase there, issue an app key, and
 you can read the feed, post, follow and react.
 
-Two things to expect:
+Things to expect:
 
-- `up` will sit for **several hours** on the first run. It is downloading and
-  unpacking a snapshot of the network's state, which ends up around 550 GB.
+- `up` will sit for **about two to three hours** on the first run. The machine
+  is downloading and unpacking a snapshot of the network's state, which ends up
+  around 560 GB. Once Snapchain starts, `up` keeps waiting while the node
+  catches up from the snapshot to the head of the chain. The snapshot can be up
+  to a day old, so this takes anywhere from minutes to around half a day; the
+  client can read from the node while it catches up. Ctrl-C is safe at any
+  point: run `readnode up` again to keep watching.
+- Keep the default region, `us-east-1`. Nearly every Snapchain peer is in AWS
+  us-east-1, and a read node fetches blocks from peers one at a time, so
+  catch-up speed is set by round-trip time to them. A node in Mumbai closed
+  the gap by only about 1.8 seconds per second, so a day-old snapshot took it
+  over half a day to catch up; expect much better next to the peers.
 - No API key from anyone. You need a cloud account to rent the machine, and the
   cloud bill is the only cost.
 
@@ -67,16 +89,30 @@ The rest of this tutorial explains why it is shaped that way.
 The client needs the seed phrase of a Farcaster account that already has
 storage. Make a new account for this. Do not use your main one.
 
-Two ways to get one:
+New accounts made in the Farcaster app sign in with a passkey and never show
+you a seed phrase, so the simplest way to get one is to register a fresh FID
+onchain. The repo has a script for that. It costs about **$0.20 of ETH on
+Optimism** (one FID with one unit of storage, plus gas):
 
-- **The official Farcaster app** at [farcaster.xyz](https://www.farcaster.xyz/).
-  Sign up with a new account; the app registers the FID, rents storage and sets
-  a username for you. Its recovery phrase, shown in the app's settings, is the
-  seed phrase this tutorial asks for.
-- **Onchain, yourself.** Register an FID through the `IdGateway` (or the
-  `Bundler`, which also rents storage) on OP Mainnet. The official
-  [create an account](https://docs.farcaster.xyz/developers/guides/accounts/create-account)
-  guide walks through it. This costs a small amount of ETH on Optimism.
+```bash
+node packages/readnode/scripts/register-test-account.mjs
+# → creates a throwaway wallet, saves its seed phrase to
+#   ~/.readnode/test-account.json (mode 0600), prints its address
+
+# send ~0.0005 ETH on Optimism to that address, then:
+node packages/readnode/scripts/register-test-account.mjs register
+# → calls IdGateway.register(), prints your new FID
+```
+
+The seed phrase in `~/.readnode/test-account.json` is the one you import into
+the client. The account has no username; the client shows it by FID. If you
+already have an account that was created with a seed phrase (an older Warpcast
+account, or one you registered yourself), you can use that instead, as long as
+you would not mind losing it.
+
+To do the registration by hand, the official
+[create an account](https://docs.farcaster.xyz/developers/guides/accounts/create-account)
+guide walks through `IdGateway` and the `Bundler`.
 
 ---
 
@@ -166,8 +202,10 @@ Two consequences worth internalizing:
    storage cannot write at all. When a category is full, the node prunes the
    oldest messages in that category to make room for new ones.
 2. **It is why this tutorial asks for an account that already has storage.**
-   Renting storage means sending a transaction on Optimism. This tool never
-   sends a transaction; it only reads Optimism to look up your FID.
+   Renting storage means sending a transaction on Optimism. The client never
+   sends a transaction; it only reads Optimism to look up your FID. (The
+   test-account script sends exactly one, `IdGateway.register`, which rents
+   the first unit of storage along with the FID.)
 
 ### Snapchain messages
 
@@ -266,26 +304,34 @@ is not a symptom of a broken node.
 
 **16 GB RAM / 4 CPU.** The node keeps the full mainnet state in RocksDB.
 
-**2 TB of disk.** This one surprises people, because the database is much
-smaller than that:
+**2 TB of disk (the default).** The database itself is smaller than that:
 
 ```bash
 curl -s localhost:3381/v1/info | jq '.dbStats.approxSize'
-# ~548 GB
+# ~557 GB
 ```
 
-Two directories live under `~/snapchain`:
+The extra space is for the first sync. The snapshot arrives as compressed
+chunks, and for a while the chunks and the unpacked database sit on disk side by
+side. Snapchain's own downloader keeps a whole second copy in
+`.rocks.snapshot/`, about 1.1 TB at peak, so on a 1 TB disk it fills up mid-sync
+and the node dies with an unhelpful error.
 
-| Path | What it is |
-| --- | --- |
-| `.rocks/` | the database |
-| `.rocks.snapshot/` | scratch space for downloading and decompressing the snapshot |
+`readnode` fetches the snapshot itself, before Snapchain first starts, into
+`.rocks.readnode/`. It unpacks each shard as soon as that shard has downloaded
+and deletes its chunks, so the peak is lower: about **800 GB** on a real run.
+1 TB therefore works with `readnode`, but leaves little room for the database to
+grow; `--disk-gb 2048` is the safe default.
 
-The snapshot downloads into `.rocks.snapshot/` and is unpacked into `.rocks/`,
-so for a while both exist: roughly **two** copies of the state, about 1.1 TB. A 1 TB disk fills up
-in the middle of the download and the node dies with an unhelpful error. The
-second terabyte is not headroom for growth; it is required to complete the first
-sync.
+It fetches the snapshot itself for a second reason. The snapshot bucket
+publishes a new snapshot for each shard once a day and deletes the old one
+straight away. Snapchain's downloader reads the snapshot list once and then
+takes hours to fetch the shards one after another, so a shard that rotates
+before its turn returns 404. The node panics, restarts with a non-empty
+database, skips the snapshot, and syncs that shard from genesis, which takes
+days. `readnode` re-reads the list for each shard, starts a shard over if it
+rotates mid-download, and fetches eight chunks at a time. Progress goes to
+`/var/log/readnode-snapshot.log`, and `readnode up` prints it.
 
 **Ports.** All three must be reachable from the internet:
 
@@ -493,11 +539,24 @@ So:
 ## Troubleshooting
 
 **`up` has been running for hours.** Expected on first run. The snapshot is
-several hundred GB. `readnode status` shows the countdown; `blockDelay` in single
-digits means done.
+several hundred GB, and after it Snapchain catches up from the snapshot's age.
+`readnode status` shows the countdown; `blockDelay` in single digits means done.
+If it is counting down slowly, check the region: far from us-east-1, every
+block fetch pays the round trip.
 
-**The node died mid-sync, disk full.** You used a 1 TB disk. The snapshot scratch
-directory needs room for a second copy. Use 2 TB.
+**The node died mid-sync, disk full.** You used a 1 TB disk with Snapchain's own
+snapshot downloader, which needs room for a second copy of the state. Use 2 TB,
+or let `readnode` fetch the snapshot.
+
+**One shard's `blockDelay` is enormous and barely moving.** That shard is syncing
+from genesis, usually because its snapshot rotated during Snapchain's own
+download (see *Why the hardware is what it is*). On the node, fetch it again:
+
+```bash
+cd ~/snapchain && sudo docker compose down
+sudo rm -rf .rocks && sudo readnode-snapshot "$PWD/.rocks"
+sudo docker compose up -d
+```
 
 **`KEY_ADD` rejected for its nonce** (`nonce is not greater than stored nonce`). Another `KEY_ADD` or `KEY_REMOVE`
 landed first. Re-read `currentUserNonce` and submit a higher value. Never retry

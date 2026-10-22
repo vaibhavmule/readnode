@@ -6,6 +6,16 @@ No API keys from anyone. You supply the compute and nothing else.
 
 ## Quickstart
 
+Install (Node 20.11+; the AWS provider also needs the AWS CLI, configured):
+
+```bash
+git clone https://github.com/vaibhavmule/readnode.git && cd readnode
+npm install && npm run build -w readnode
+npm install -g ./packages/readnode
+```
+
+Then:
+
 ```bash
 # 0. Provision the compute
 readnode provision --provider aws --username yourname
@@ -30,13 +40,15 @@ the microsite.
 A read node needs **16 GB RAM, 4 CPU, 2 TB of disk and a public IP** with ports
 3381–3383 reachable. Expect roughly **$50–70 of cloud spend for a one-week run**.
 
-The 2 TB is not the database — the database is about 550 GB. It is the
-`.rocks.snapshot/` scratch directory, which holds a second copy of the state
-while the snapshot downloads and decompresses. One terabyte fills up mid-sync
-and the node dies.
+The database is about 560 GB. The rest is room for the first sync: `readnode`
+fetches the snapshot itself and peaked at about 800 GB on a real run, while
+Snapchain's own downloader needs about 1.1 TB. Keep the default region,
+`us-east-1`; that is where the Snapchain peers are, and catch-up speed depends
+on round-trip time to them.
 
-You also need a Farcaster account that **already has storage rented**. Storage is
-paid onchain; this tool does not rent it for you.
+You also need a Farcaster account that **already has storage rented**, and its
+seed phrase. Use a throwaway: `node packages/readnode/scripts/register-test-account.mjs`
+makes one onchain for about $0.20 of ETH on Optimism (see the tutorial).
 
 ## Providers
 
