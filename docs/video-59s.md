@@ -22,7 +22,7 @@ mock-up dashboards, no invented statistics. The terminal output is the product.
 | 8 | 0:38–0:45 | Click "Issue app key"; scopes and TTL appear | `One gasless app key. No Optimism transaction.` |
 | 9 | 0:45–0:52 | Feed loads; post a cast; like; follow | `Read, post, follow, react` |
 | 10 | 0:52–0:57 | Toggle a client badge in the filter; that client's casts vanish | `See which client posted what — and filter it out` |
-| 11 | 0:57–0:59 | Repo + site URLs | `MIT · three commands · github.com/you/readnode` |
+| 11 | 0:57–0:59 | Repo + site URLs | `MIT · three commands · github.com/vaibhavmule/readnode` |
 
 ---
 
