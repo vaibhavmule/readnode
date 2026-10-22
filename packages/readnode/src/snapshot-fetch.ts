@@ -38,7 +38,7 @@ fetch_chunk() {
   # only once curl succeeds, so any chunk without the suffix is complete.
   local f="$1/$3"
   [ -s "$f" ] && return 0
-  curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -o "$f.part" "$2/$3" && mv "$f.part" "$f"
+  curl -fsS --retry 10 --retry-delay 10 --retry-all-errors -o "$f.part" "$2/$3" && mv "$f.part" "$f"
 }
 export -f fetch_chunk
 
