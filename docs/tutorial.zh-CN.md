@@ -383,6 +383,8 @@ sudo rm -rf .rocks && sudo readnode-snapshot "$PWD/.rocks"
 sudo docker compose up -d
 ```
 
+**应用密钥已被接受，但你的节点查不到它，发帖也失败。** 你的节点还在追赶。免 gas 密钥存放在分片 0，但你的节点按账号所在的分片（1 或 2，由 FID 的哈希决定）来回答 `signersByFid` 并校验你的帖子。在那个分片同步到包含该密钥的区块之前，你的节点根本不知道这个密钥，而其他节点已经能查到了。等 `readnode status` 显示所有分片都已追上，再发帖。新注册的账号也一样：节点同步过注册和存储租用的区块之前，看不到它们。
+
 **`KEY_ADD` 因 nonce 被拒**（`nonce is not greater than stored nonce`）。 有另一条 `KEY_ADD` 或 `KEY_REMOVE` 先落地了。重新读取 `currentUserNonce` 并提交更大的值。永远不要用同一个 nonce 重试。
 
 **`KEY_ADD` 因签名被拒。** `KeyAdd` 签名验出结果不是该 FID 的托管地址。检查你导入的助记词推导出的地址是否等于 `idOf()` 的返回值。

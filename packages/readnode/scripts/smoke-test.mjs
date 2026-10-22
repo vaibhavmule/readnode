@@ -53,6 +53,10 @@ async function until(label, check, seconds = 180) {
 
 const state = await api("/api/session", { mnemonic });
 NODE = state.nodeUrl;
+// A node that is still catching up validates writes against stale state: it
+// won't see a freshly added app key, so it rejects casts signed with it.
+const lag = Math.max(...(await node("info")).shardInfos.map((s) => s.blockDelay));
+if (lag > 60) throw new Error(`node is ${lag}s behind; wait until \`readnode status\` shows it caught up`);
 const fid = state.fid;
 console.log(`node ${NODE}, fid ${fid}, custody ${state.custodyAddress}`);
 if (!state.custodyMatches) throw new Error("custody address does not own this FID");

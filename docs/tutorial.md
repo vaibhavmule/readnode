@@ -558,6 +558,15 @@ sudo rm -rf .rocks && sudo readnode-snapshot "$PWD/.rocks"
 sudo docker compose up -d
 ```
 
+**The app key was accepted, but your node doesn't list it, and posts fail.** Your
+node is still catching up. Gasless keys are stored on shard 0, but your node
+answers `signersByFid` and validates your casts from the account's own shard
+(1 or 2, picked by a hash of the FID). Until that shard reaches the block that
+carried the key, your node has never heard of it. Other nodes already show it.
+Wait until `readnode status` shows every shard caught up, then post. The same
+goes for a brand-new account: your node can't see its registration or storage
+until it has synced past them.
+
 **`KEY_ADD` rejected for its nonce** (`nonce is not greater than stored nonce`). Another `KEY_ADD` or `KEY_REMOVE`
 landed first. Re-read `currentUserNonce` and submit a higher value. Never retry
 with the same nonce.
