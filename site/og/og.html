@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- Source for public/og.png: open in Chrome at 1200x630 and screenshot (see site/og/render.sh). -->
+<html><head><meta charset="utf-8"><style>
+  * { margin: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; }
+  body {
+    background: radial-gradient(900px 500px at 100% 0%, rgba(124,92,255,.28), transparent 60%),
+                radial-gradient(700px 400px at 0% 100%, rgba(34,211,166,.14), transparent 60%), #0b0d10;
+    color: #e8ecf1; font-family: -apple-system, "SF Pro Display", "Inter", system-ui, sans-serif;
+    padding: 64px 72px; display: flex; flex-direction: column;
+  }
+  .eyebrow { font: 600 22px/1 ui-monospace, "SF Mono", Menlo, monospace; color: #22d3a6; letter-spacing: .04em; }
+  h1 { font-size: 68px; line-height: 1.05; font-weight: 750; letter-spacing: -.02em; margin-top: 22px; max-width: 980px; }
+  .cmds { margin-top: 40px; background: #14171c; border: 1px solid #262c36; border-radius: 16px; padding: 26px 32px;
+          font: 500 27px/1.65 ui-monospace, "SF Mono", Menlo, monospace; width: 760px; }
+  .cmds .n { color: #8b95a5; display: inline-block; width: 40px; }
+  .cmds .c { color: #e8ecf1; } .cmds .p { color: #7c5cff; }
+  .foot { margin-top: auto; display: flex; justify-content: space-between; font-size: 24px; color: #8b95a5; }
+  .foot b { color: #e8ecf1; font-weight: 600; }
+</style></head><body>
+  <div class="eyebrow">FARCASTER · SNAPCHAIN READ NODE</div>
+  <h1>Read from your own Farcaster node</h1>
+  <div class="cmds">
+    <div><span class="n">0</span><span class="p">readnode</span> <span class="c">provision</span></div>
+    <div><span class="n">1</span><span class="p">readnode</span> <span class="c">up</span></div>
+    <div><span class="n">2</span><span class="p">readnode</span> <span class="c">client</span></div>
+  </div>
+  <div class="foot"><span><b>readnode.aft.page</b> · tutorial in English &amp; 中文</span><span>No API keys · MIT</span></div>
+</body></html>
