@@ -2,6 +2,7 @@ const FARCASTER_EPOCH_SECONDS = 1609459200;
 
 const el = (id) => document.getElementById(id);
 let state = null;
+let feedClients = [];
 let toastTimer = null;
 
 function fcTimeToDate(seconds) {
@@ -121,20 +122,23 @@ function renderSignerFacts() {
 }
 
 function clientLabel(client) {
-  if (client.requestFid) {
-    return client.requestFid === state.signer?.requestFid
-      ? `this client (fid ${client.requestFid})`
-      : `app fid ${client.requestFid}`;
+  if (client.requestFid !== undefined && client.requestFid === state.signer?.requestFid) {
+    return "this client";
   }
-  return `key ${shortKey(client.signerKey)}`;
+  if (client.label && client.label !== client.id) return client.label;
+  return client.id.startsWith("key:") ? `key ${shortKey(client.id.slice(4))}` : client.id;
 }
 
 function renderFilters() {
   const target = el("client-list");
-  const clients = state.clients.filter((c) => c.id !== `fid:${state.signer?.requestFid}`);
+  // Clients in the current feed, plus any the filter names that aren't in it.
+  const clients = [...feedClients];
+  for (const id of [...state.filter.include, ...state.filter.exclude]) {
+    if (!clients.some((c) => c.id === id)) clients.push({ id, label: id, casts: 0 });
+  }
   if (clients.length === 0) {
     target.innerHTML =
-      '<p class="hint">No other clients seen yet. They appear as casts load.</p>';
+      '<p class="hint">No clients seen yet. They appear as casts load.</p>';
     return;
   }
   target.innerHTML = clients
@@ -142,7 +146,7 @@ function renderFilters() {
       const included = state.filter.include.includes(client.id);
       const excluded = state.filter.exclude.includes(client.id);
       return `<div class="client" data-id="${escapeHtml(client.id)}">
-        <span class="id">${escapeHtml(clientLabel(client))}<br>${escapeHtml(client.id)}</span>
+        <span class="id"><b>${escapeHtml(clientLabel(client))}</b> · ${client.casts} cast${client.casts === 1 ? "" : "s"}<br><small title="${escapeHtml(client.id)}">${escapeHtml(client.id)}</small></span>
         <span class="mode">
           <button data-mode="include" class="${included ? "active" : ""}">only</button>
           <button data-mode="exclude" class="${excluded ? "active" : ""}">hide</button>
@@ -178,7 +182,9 @@ async function loadFeed() {
   const target = el("feed");
   target.innerHTML = '<p class="hint">Loading from your node…</p>';
   try {
-    const { entries } = await api("/api/feed?limit=25");
+    const { entries, clients } = await api("/api/feed?limit=25");
+    feedClients = clients ?? [];
+    renderFilters();
     if (entries.length === 0) {
       target.innerHTML = '<p class="hint">No casts match the current filter.</p>';
       return;
@@ -207,7 +213,7 @@ function renderCast(entry) {
       ${avatar}
       <button class="linklike" data-action="profile" data-fid="${entry.fid}">${escapeHtml(who)}</button>
       <span>${fcTimeToDate(entry.timestamp).toISOString().slice(0, 16).replace("T", " ")}</span>
-      <span class="badge${entry.isOwn ? " own" : ""}">${escapeHtml(entry.clientLabel)}</span>
+      <span class="badge${entry.isOwn ? " own" : ""}">via ${escapeHtml(entry.clientId === `fid:${state.signer?.requestFid}` ? "this client" : entry.clientLabel)}</span>
     </div>
     ${parent}
     <div class="cast-text">${escapeHtml(entry.text)}</div>

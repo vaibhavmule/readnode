@@ -4,6 +4,8 @@ Run your own Farcaster read node, then use a client that reads from it.
 
 No API keys from anyone. You supply the compute and nothing else.
 
+**Proof it works:** [one real mainnet run](https://readnode.aft.page/proof/), from provisioning to posting, with timings, costs, hashes and what broke ([source](docs/proof.md)).
+
 ## Quickstart
 
 Install (Node 20.11+; the AWS provider also needs the AWS CLI, configured):

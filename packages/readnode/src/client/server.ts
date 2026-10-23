@@ -257,7 +257,7 @@ export async function runClientServer(options: ClientServerOptions): Promise<voi
         includeReactions,
         filter,
       });
-      sendJson(response, 200, { entries, filter });
+      sendJson(response, 200, { entries, filter, clients: feed.lastClients });
       return true;
     }
 

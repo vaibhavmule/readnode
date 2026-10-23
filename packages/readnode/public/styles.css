@@ -248,9 +248,15 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--muted);
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.client .id b {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .client .mode {

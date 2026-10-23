@@ -74,6 +74,22 @@ export interface SignerRecord {
   scopes: number[];
   requestFid?: number;
   nonce?: number;
+  onChainEvent?: {
+    signerEventBody?: { metadata?: string; metadataType?: number };
+  };
+}
+
+// Keys added onchain through KeyRegistry carry SignedKeyRequest metadata:
+// abi.encode((uint256 requestFid, address requestSigner, bytes signature,
+// uint256 deadline)). The struct has a dynamic member, so word 0 is its offset
+// and word 1 is requestFid. The node only fills in `requestFid` for gasless keys.
+function onchainRequestFid(signer: SignerRecord): number | undefined {
+  const body = signer.onChainEvent?.signerEventBody;
+  if (body?.metadataType !== 1 || !body.metadata) return undefined;
+  const bytes = Buffer.from(body.metadata, "base64");
+  if (bytes.length < 64) return undefined;
+  const requestFid = Number(BigInt(`0x${bytes.subarray(32, 64).toString("hex")}`));
+  return Number.isSafeInteger(requestFid) && requestFid > 0 ? requestFid : undefined;
 }
 
 export interface SignersResponse {
@@ -255,7 +271,11 @@ export class SnapchainNode {
   }
 
   async signersByFid(fid: number): Promise<SignersResponse> {
-    return this.get<SignersResponse>("/v1/signersByFid", { fid });
+    const response = await this.get<SignersResponse>("/v1/signersByFid", { fid });
+    for (const signer of response.signers) {
+      signer.requestFid ??= onchainRequestFid(signer);
+    }
+    return response;
   }
 
   async storageLimitsByFid(fid: number): Promise<StorageLimitsResponse> {

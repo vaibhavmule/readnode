@@ -104,6 +104,24 @@ const outputs = await Promise.all([
       footer: "MIT 许可。请用测试账号运行。",
     },
   }),
+  render({
+    source: "docs/proof.md",
+    out: "proof",
+    lang: "en",
+    title: "Proof: what we ran",
+    tagline: "One real mainnet run: provisioned, synced in 19 h 18 m, and posted through our own node.",
+    strings: {
+      assets: "../",
+      eyebrow: "readnode · mainnet run · Oct 22–23, 2026",
+      quickstart: "Summary",
+      repo: "GitHub repo",
+      switchHref: "../index.html",
+      switchLang: "en",
+      switchLabel: "Tutorial",
+      contents: "Contents",
+      footer: "MIT licensed. Run it against a test account.",
+    },
+  }),
 ]);
 
 for (const output of outputs) {

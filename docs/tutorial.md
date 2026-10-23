@@ -4,6 +4,9 @@ Run your own Snapchain read node and a client that reads from it. Your feed and
 your posts go through your node. The only outside services the tool calls are
 the fnames registry and a public Optimism RPC, both to look up your FID.
 
+Want to see it work first? Here's [one real mainnet run](https://readnode.aft.page/proof/), from
+provisioning to posting: timings, costs, and every message hash.
+
 ---
 
 ## Quickstart

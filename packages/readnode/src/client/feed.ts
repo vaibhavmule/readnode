@@ -30,6 +30,13 @@ export interface FeedEntry {
   recasts?: number;
 }
 
+export interface FeedClient {
+  id: string;
+  label: string;
+  requestFid?: number;
+  casts: number;
+}
+
 export interface FeedOptions {
   limit?: number;
   filter?: ClientFilter;
@@ -72,6 +79,9 @@ export class FeedBuilder {
   readonly directory: ClientDirectory;
   private readonly profiles = new Map<number, Profile>();
   private readonly resolvedSigners = new Set<number>();
+  // Clients seen in the last feed, before filtering, so the filter list can
+  // still offer the ones it is currently hiding.
+  lastClients: FeedClient[] = [];
 
   constructor(node: SnapchainNode, directory: ClientDirectory) {
     this.node = node;
@@ -160,6 +170,16 @@ export class FeedBuilder {
       this.resolveClients(author),
     );
 
+    const appFids = new Set<number>();
+    for (const message of casts) {
+      const requestFid = this.directory.get(message.signer)?.requestFid;
+      if (requestFid !== undefined) appFids.add(requestFid);
+    }
+    await mapLimit([...appFids], 6, async (appFid) => {
+      const app = await this.profile(appFid);
+      this.directory.setLabel(`fid:${appFid}`, app.username ? `@${app.username}` : `fid ${appFid}`);
+    });
+
     const entries = await mapLimit(casts, 8, async (message) => {
       const author = await this.profile(message.data.fid);
       const body = message.data.castAddBody;
@@ -178,6 +198,19 @@ export class FeedBuilder {
       };
       return entry;
     });
+
+    const seen = new Map<string, FeedClient>();
+    for (const entry of entries) {
+      const client = seen.get(entry.clientId) ?? {
+        id: entry.clientId,
+        label: entry.clientLabel,
+        requestFid: entry.clientId.startsWith("fid:") ? Number(entry.clientId.slice(4)) : undefined,
+        casts: 0,
+      };
+      client.casts += 1;
+      seen.set(entry.clientId, client);
+    }
+    this.lastClients = [...seen.values()].sort((a, b) => b.casts - a.casts);
 
     const visible = entries.filter((entry) => isAllowed(filter, entry.clientId));
 
