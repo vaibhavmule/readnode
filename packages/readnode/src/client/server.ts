@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { ReactionType } from "@farcaster/hub-nodejs";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -293,10 +294,10 @@ export async function runClientServer(options: ClientServerOptions): Promise<voi
 
     if (pathname === "/api/react" && method === "POST") {
       const body = await readBody(request);
-      const type = body.type === "Recast" ? "REACTION_TYPE_RECAST" : "REACTION_TYPE_LIKE";
+      const type = body.type === "Recast" ? ReactionType.RECAST : ReactionType.LIKE;
       const message = await publisher().react(
         { fid: Number(body.fid), hash: String(body.hash) },
-        type as never,
+        type,
       );
       sendJson(response, 200, { hash: message.hash });
       return true;
